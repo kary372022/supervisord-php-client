@@ -43,7 +43,8 @@ class SupervisorClient
      * @param string $username The username.
      * @param string $password The password.
      */
-    public function setAuth($username, $password) {
+    public function setAuth($username, $password)
+    {
         $this->_username = $username;
         $this->_password = $password;
     }
@@ -53,7 +54,8 @@ class SupervisorClient
      *
      * @param float $timeout The connection timeout, in seconds.
      */
-    public function setTimeout($timeout) {
+    public function setTimeout($timeout)
+    {
         $this->_timeout = is_null($timeout) ? ini_get("default_socket_timeout") : $timeout;
     }
 
@@ -632,13 +634,8 @@ class SupervisorClient
 
         // Parse response.
         $body = substr($httpResponse, $bodyStartPosition);
-        $response = \xmlrpc_decode($body, 'utf-8');
 
-        if (is_array($response) && \xmlrpc_is_fault($response)) {
-            throw new Exception($response['faultString'], $response['faultCode']);
-        }
-
-        return $response;
+        return xmlDecode($body, $method);
     }
 
     /**
@@ -695,7 +692,9 @@ class SupervisorClient
         }
 
         // Create the HTTP request.
-        $xmlRpc = \xmlrpc_encode_request("$namespace.$method", $args, array('encoding' => 'utf-8'));
+//        $xmlRpc = \xmlrpc_encode_request("$namespace.$method", $args, array('encoding' => 'utf-8'));
+        $xmlRpc = xmlEncodeRequest("$namespace.$method", $args);
+
         $httpRequest = "POST /RPC2 HTTP/1.0\r\n" .
             "Content-Length: " . strlen($xmlRpc) .
             $authorization .
@@ -715,4 +714,139 @@ class SupervisorClient
             fclose($this->_socket);
         }
     }
+
+}
+
+
+
+/**
+ * @param $method
+ * @param array $params
+ * @return string
+ */
+function xmlEncodeRequest($method, array $params)
+{
+    $xml = '<?xml version="1.0" encoding="UTF-8"?><methodCall>';
+    $xml .= '<methodName>' . htmlspecialchars($method) . '</methodName>';
+    $xml .= '<params>';
+
+    foreach ($params as $param) {
+        $xml .= '<param><value>' . xmlEncodeValue($param) . '</value></param>';
+    }
+
+    $xml .= '</params></methodCall>';
+
+    return $xml;
+}
+
+/**
+ * encode
+ * @param $value
+ * @return string
+ */
+function xmlEncodeValue($value)
+{
+    if (is_int($value) || is_float($value)) {
+        return '<double>' . $value . '</double>';
+    } elseif (is_bool($value)) {
+        return '<boolean>' . ($value ? '1' : '0') . '</boolean>';
+    } elseif (is_string($value)) {
+        return '<string>' . htmlspecialchars($value) . '</string>';
+    } elseif (is_array($value)) {
+        $xml = '<array><data>';
+
+        foreach ($value as $item) {
+            $xml .= '<value>' . xmlEncodeValue($item) . '</value>';
+        }
+
+        $xml .= '</data></array>';
+
+        return $xml;
+    } else {
+        return '';
+    }
+}
+
+/**
+ * @param $xml
+ * @param $encoding
+ * @return mixed|string|null
+ */
+function xmlDecode($xml, $method)
+{
+    $xml = trim($xml);
+    $xml = simplexml_load_string($xml);
+    $response = [];
+    switch ($method) {
+        case "getAllProcessInfo":
+        case "stopAllProcesses":
+        case "startAllProcesses":
+            $data = $xml->params->param->value->array->data;
+
+            // 提取嵌套数据
+            foreach ($data->value as $value) {
+                $struct = $value->struct;
+                $memberArr = [];
+                foreach ($struct->member as $member) {
+                    $name = (string)$member->name;
+                    $value = (string)$member->value->string; // 或者根据实际情况选择其他数据类型
+                    $memberArr[$name] = $value;
+                }
+                $response[] = $memberArr;
+            }
+            break;
+        case "getProcessInfo":
+        case "getState":
+
+            $data = $xml->params->param;
+            // 提取嵌套数据
+            foreach ($data->value as $value) {
+                $struct = $value->struct;
+                foreach ($struct->member as $member) {
+                    $name = (string)$member->name;
+                    $value = (string)$member->value->string; // 或者根据实际情况选择其他数据类型
+                    $response[$name] = $value;
+                }
+            }
+            break;
+        case "getAPIVersion":
+            $response = current($xml->params->param->value->string);
+            break;
+        case "tailProcessStderrLog":
+        case "tailProcessStdoutLog":
+
+            $response = @current($xml->params->param->value->array->data->value);
+
+            break;
+        case "stopProcess":
+        case "startProcess":
+
+            $response = @current($xml->params->param->value);
+            if (!$response) {
+                $responseArr = json_decode(json_encode($xml->fault->value->struct), true);
+
+                $response = '';
+                if ($responseArr) {
+                    foreach ($responseArr as $items) {
+                        foreach ($items as $item) {
+                            $val = current($item['value']);
+                            $response .= "{$item['name']} : {$val} ;";
+                        }
+                    }
+                }
+            }
+
+            if ($response == 1) {
+                $response = 'ok';
+            }
+            break;
+        case "getTwiddlerAPIVersion":
+
+            break;
+        default:
+            $response = json_decode(json_encode($xml), true);
+            break;
+    }
+
+    return $response;
 }
