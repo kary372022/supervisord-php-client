@@ -1,20 +1,9 @@
 > **DEPRECATION NOTICE**
 
-> Even though this package is known to be fully functional and free of bugs I do not proactively develop it anymore. I try to address issues and PRs but you're rather encouraged to use SupervisorPHP which is a more fully fledged library.
+> 基于原作者的代码进行调整， 不依赖于 `xmlrpc` 扩展, 满足部分方法，快捷使用
+> 这个 fork 并没有加入 `composer` 中 , 就一个文件 没必要。 copy 走直接用就好了。
 
 > https://github.com/supervisorphp/supervisor
-
-> For details see http://supervisorphp.com
-
-supervisord PHP client
-======================
-
-A PHP client library for [supervisor](http://supervisord.org) which utilizes [its XML-RPC interface](http://supervisord.org/api.html).
-
-This package has been submitted to Packagist so you can install it [from there](https://packagist.org/packages/mondalaci/supervisor-client).
-
-Usage
------
 
 1) Include the library and import the class:
 
